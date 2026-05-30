@@ -19,7 +19,7 @@ from database import Base, engine, get_db
 # from schemas import PostCreate, PostResponse,PostUpdate,UserCreate, UserResponse , UserUpdate
 
 # Base.metadata.create_all(bind=engine) #this is synchronous
-from routers import users,posts
+from routers import posts, users
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -122,6 +122,25 @@ async def user_posts_page(
     )
 
 
+## login and register template_routes
+@app.get("/login", include_in_schema=False)
+async def login_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"title": "Login"},
+    )
+
+
+@app.get("/register", include_in_schema=False)
+async def register_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "register.html",
+        {"title": "Register"},
+    )
+
+
 ## StarletteHTTPException Handler
 @app.exception_handler(StarletteHTTPException)
 async def general_http_exception_handler(request: Request, exception: StarletteHTTPException):
@@ -146,6 +165,7 @@ async def general_http_exception_handler(request: Request, exception: StarletteH
         },
         status_code=exception.status_code,
     )
+
 
 
 ### RequestValidationError Handler

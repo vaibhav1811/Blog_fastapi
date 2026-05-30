@@ -1,0 +1,10 @@
+
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+media/profile_pics/
+*.log
+*.env.local
+.DS_Store
