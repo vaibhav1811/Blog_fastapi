@@ -2,8 +2,14 @@ from datetime import UTC, datetime, timedelta
 import jwt
 from fastapi.security import OAuth2PasswordBearer
 from pwdlib import PasswordHash
-
+from typing import Annotated
+from fastapi import Depends, HTTPException, status
 from config import settings
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+import models
+from database import get_db
 
 password_hash= PasswordHash.recommended() # PasswordHash is a class provided by the pwdlib library that offers various password hashing algorithms. The recommended() method returns an instance of the most secure and up-to-date password hashing algorithm available, which is currently bcrypt. By using password_hash, you can hash and verify passwords securely in your application.
 
@@ -50,4 +56,44 @@ def verify_access_token(token: str) -> str | None:
         return None
     else:
         return payload.get("sub")
+    
+
+     ## get_current_user
+async def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> models.User:
+    user_id = verify_access_token(token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    result = await db.execute(
+        select(models.User).where(models.User.id == user_id_int),
+    )
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+CurrentUser = Annotated[models.User, Depends(get_current_user)] 
+#CurrentUser is a type alias that represents the currently authenticated user in the application. It is defined as an Annotated type, which combines the models.User class with the Depends(get_current_user) dependency. This means that whenever you use CurrentUser as a parameter in your route handlers, FastAPI will automatically call the get_current_user function to retrieve the authenticated user based on the provided token. If the token is valid and corresponds to a user in the database, that user will be passed to the route handler as an instance of models.User. If the token is invalid or expired, an HTTPException will be raised with a 401 Unauthorized status code.
+
 

@@ -1,22 +1,24 @@
 ## Imports for Users Router
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func,select
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile,Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from PIL import UnidentifiedImageError
+from starlette.concurrency import run_in_threadpool # for running blocking code in a separate thread to avoid blocking the main event loop
+from image_utils import process_profile_image, delete_profile_image
 
 import models
 from database import get_db
-from schemas import PostResponse, UserCreate, UserPublic,UserPrivate, UserUpdate, Token
+from schemas import PostResponse, UserCreate, UserPublic,UserPrivate, UserUpdate, Token , PaginatedPostsResponse
 
 from datetime import timedelta
 from fastapi.security import OAuth2PasswordRequestForm
 from auth import (
-     create_access_token,
+    CurrentUser,
+    create_access_token,
     hash_password,
-    oauth2_scheme,
-    verify_access_token,
     verify_password,
      )
 from config import settings
@@ -98,41 +100,11 @@ async def login_for_access_token(
 
 ## get_current_user
 @router.get("/me", response_model=UserPrivate)
-async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-):
-    """Get the currently authenticated user."""
-    user_id = verify_access_token(token)
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+async def get_current_user(current_user: CurrentUser):
+    return current_user
 
-    # Validate user_id is a valid integer (defense against malformed JWT)
-    try:
-        user_id_int = int(user_id)
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+   
 
-    result = await db.execute(
-        select(models.User).where(models.User.id == user_id_int),
-    )
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user
-#this endpoint allows the client to retrieve the currently authenticated user's information by providing a valid JWT access token in the request. The token is verified and decoded to extract the user ID, which is then used to query the database for the corresponding user record. If the token is invalid, expired, or if the user does not exist, appropriate HTTP exceptions are raised to indicate the authentication failure.
                            
 
 
@@ -147,9 +119,14 @@ async def get_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
 
 
 
-## get_user_posts
-@router.get("/{user_id}/posts", response_model=list[PostResponse])
-async def get_user_posts(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+## get_user_posts - paginated
+@router.get("/{user_id}/posts", response_model=PaginatedPostsResponse)
+async def get_user_posts(
+    user_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+):
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalars().first()
     if not user:
@@ -157,22 +134,48 @@ async def get_user_posts(user_id: int, db: Annotated[AsyncSession, Depends(get_d
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(models.Post)
+        .where(models.Post.user_id == user_id),
+    )
+    total = count_result.scalar() or 0
+
     result = await db.execute(
         select(models.Post)
-        .options(selectinload(models.Post.author)) # for eager loading of the author relationship, so that we can access the username of the author in the response without making additional queries to the database for each post.
+        .options(selectinload(models.Post.author))
         .where(models.Post.user_id == user_id)
-        .order_by(models.Post.date_posted.desc()),
+        .order_by(models.Post.date_posted.desc())
+        .offset(skip)
+        .limit(limit),
     )
     posts = result.scalars().all()
-    return posts
+
+    has_more = skip + len(posts) < total
+
+    return PaginatedPostsResponse(
+        posts=[PostResponse.model_validate(post) for post in posts],
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=has_more,
+    )
 
 ## update_user
 @router.patch("/{user_id}", response_model=UserPrivate)
 async def update_user(
     user_id: int,
     user_update: UserUpdate,
+    current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user",
+        )
+    
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalars().first()
     if not user:
@@ -205,8 +208,7 @@ async def update_user(
         user.username = user_update.username
     if user_update.email is not None:
         user.email = user_update.email.lower()
-    if user_update.image_file is not None:
-        user.image_file = user_update.image_file
+   
 
     await db.commit()
     await db.refresh(user)
@@ -217,7 +219,13 @@ async def update_user(
 
 ## delete_user
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+async def delete_user(user_id: int,current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this user",
+        )
+
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalars().first()
     if not user:
@@ -225,7 +233,85 @@ async def delete_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+    old_filename = user.image_file
 
     await db.delete(user) # we can use await here because delete is an async method in AsyncSession, it interacts with the database to mark the object for deletion, so we need to use await with it. but add is not an async method because it just adds the object to the session, it does not interact with the database until we commit the session, so we can use it without await.
     await db.commit()
+
+    if old_filename: # if the user had a profile picture, we want to delete it from the server when the user is deleted to free up storage space and avoid orphaned files. We use the delete_profile_image function, which takes the old filename as an argument and deletes the corresponding file from the server. This ensures that we don't accumulate unused profile pictures on the server over time as users are deleted.
+        delete_profile_image(old_filename)
+
+
+    ## Upload Profile Picture Endpoint
+@router.patch("/{user_id}/picture", response_model=UserPrivate)
+async def upload_profile_picture(
+    user_id: int,
+    file: UploadFile, #UploadFile is a special type provided by FastAPI that represents an uploaded file. It provides attributes and methods to access the file's content, filename, content type, and other metadata. When you define a parameter as UploadFile in your endpoint function, FastAPI will automatically handle the file upload process and provide you with an instance of UploadFile that you can use to read the file's content and save it to your server or perform any necessary processing.
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    if current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user's picture",
+        )
+
+    content = await file.read() # we need to use await here because read is an async method of UploadFile, it reads the content of the uploaded file asynchronously, so we need to use await with it to get the content as bytes.
+
+    if len(content) > settings.max_upload_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large. Maximum size is {settings.max_upload_size_bytes // (1024 * 1024)}MB",
+        )
+
+    try:
+        new_filename = await run_in_threadpool(process_profile_image, content) # we need to use run_in_threadpool here because process_profile_image is a blocking function that uses PIL for image processing, which is not asynchronous. By using run_in_threadpool, we can run the blocking code in a separate thread without blocking the main event loop of FastAPI, allowing other requests to be processed concurrently while the image is being processed.
+    except UnidentifiedImageError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP).",
+        ) from err
+
+    old_filename = current_user.image_file
+
+    current_user.image_file = new_filename # we update the user's image_file field with the new filename returned by the process_profile_image function, which is the name of the saved profile picture. This way, we can keep track of the current profile picture associated with the user in the database, and we can also use this filename to delete the old profile picture from the server if needed when a new one is uploaded.
+    await db.commit()
+    await db.refresh(current_user)
+
+    if old_filename: # if there was an old profile picture, we want to delete it from the server to free up storage space and avoid orphaned files. We use the delete_profile_image function, which takes the old filename as an argument and deletes the corresponding file from the server. This ensures that we don't accumulate unused profile pictures on the server over time as users update their profile pictures.
+        delete_profile_image(old_filename)
+
+    return current_user
+
+## Delete Profile Picture Endpoint
+@router.delete("/{user_id}/picture", response_model=UserPrivate)
+async def delete_user_picture(
+    user_id: int,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    if current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this user's picture",
+        )
+
+    old_filename = current_user.image_file
+
+    if old_filename is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No profile picture to delete",
+        )
+
+    current_user.image_file = None
+    await db.commit()
+    await db.refresh(current_user)
+
+    delete_profile_image(old_filename)
+
+    return current_user
+
+
+
 

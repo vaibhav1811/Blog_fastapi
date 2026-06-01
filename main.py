@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 # from fastapi.responses import HTMLResponse 
 from fastapi.templating import Jinja2Templates 
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from sqlalchemy import select
+from sqlalchemy import select,func
 # from sqlalchemy.orm import Session 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -20,6 +20,8 @@ from database import Base, engine, get_db
 
 # Base.metadata.create_all(bind=engine) #this is synchronous
 from routers import posts, users
+from config import settings
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,17 +63,32 @@ app.include_router(posts.router, prefix="/api/posts", tags=["posts"])
 #include in scheme = false, used to hide the route from the documentation
 
 ## home
+## home route - paginated
 @app.get("/", include_in_schema=False, name="home")
 @app.get("/posts", include_in_schema=False, name="posts")
 async def home(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
+    count_result = await db.execute(select(func.count()).select_from(models.Post))
+    total = count_result.scalar() or 0
+
     result = await db.execute(
-        select(models.Post).options(selectinload(models.Post.author)).order_by(models.Post.date_posted.desc())
+        select(models.Post)
+        .options(selectinload(models.Post.author))
+        .order_by(models.Post.date_posted.desc())
+        .limit(settings.post_per_page),
     )
     posts = result.scalars().all()
+
+    has_more = len(posts) < total
+
     return templates.TemplateResponse(
         request,
         "home.html",
-        {"posts": posts, "title": "Home"},
+        {
+            "posts": posts,
+            "title": "Home",
+            "limit": settings.post_per_page,
+            "has_more": has_more,
+        },
     )
 
 
@@ -95,31 +112,50 @@ async def post_page(request: Request, post_id: int, db: Annotated[AsyncSession, 
 
 
 ## user_posts_page
+## user_posts_page route - paginated
 @app.get("/users/{user_id}/posts", include_in_schema=False, name="user_posts")
 async def user_posts_page(
     request: Request,
     user_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    result = await db.execute(select(models.User).where(models.User.id == user_id)) #here object user does not need selectin load because we are not loading the posts with the user, we are loading the user first and then loading the posts separately.
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalars().first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(models.Post)
+        .where(models.Post.user_id == user_id),
+    )
+    total = count_result.scalar() or 0
+
     result = await db.execute(
         select(models.Post)
-        .options(selectinload(models.Post.author)) #here we need selectin load because we are loading the posts and we want to load the author of each post to display the username in the template.so object relational mapping is used here to load the author of each post with the post itself, so that we can access the username of the author in the template without making additional queries to the database for each post.
+        .options(selectinload(models.Post.author))
         .where(models.Post.user_id == user_id)
-        .order_by(models.Post.date_posted.desc()),
+        .order_by(models.Post.date_posted.desc())
+        .limit(settings.post_per_page),
     )
     posts = result.scalars().all()
+
+    has_more = len(posts) < total
+
     return templates.TemplateResponse(
         request,
         "user_posts.html",
-        {"posts": posts, "user": user, "title": f"{user.username}'s Posts"},
-    )
+        {
+            "posts": posts,
+            "user": user,
+            "title": f"{user.username}'s Posts",
+            "limit": settings.post_per_page,
+            "has_more": has_more,
+        },
+    ) 
 
 
 ## login and register template_routes
@@ -140,6 +176,13 @@ async def register_page(request: Request):
         {"title": "Register"},
     )
 
+@app.get("/account", include_in_schema=False)
+async def account_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "account.html",
+        {"title": "Account"},
+    )
 
 ## StarletteHTTPException Handler
 @app.exception_handler(StarletteHTTPException)

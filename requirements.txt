@@ -1,0 +1,21 @@
+# FastAPI Blog - Python Dependencies
+# Install with: uv sync  (recommended)
+# Or with pip: pip install -r requirements.txt
+
+# ── Core Framework ──────────────────────────────────────────────
+fastapi[standard]>=0.136.1       # FastAPI with standard extras (uvicorn, jinja2, python-multipart, etc.)
+
+# ── Database ─────────────────────────────────────────────────────
+sqlalchemy>=2.0.50               # Async ORM (AsyncSession, mapped_column, relationships)
+aiosqlite>=0.22.1                # Async SQLite driver used by SQLAlchemy via sqlite+aiosqlite
+greenlet>=3.5.1                  # Required by SQLAlchemy for async context switching
+
+# ── Authentication & Security ────────────────────────────────────
+pyjwt>=2.13.0                    # JWT token creation and verification (auth.py)
+pwdlib[argon2]>=0.3.0            # Password hashing via Argon2 (auth.py → hash_password / verify_password)
+
+# ── Configuration ────────────────────────────────────────────────
+pydantic-settings>=2.14.0        # BaseSettings for loading config from .env (config.py)
+
+# ── Image Processing ─────────────────────────────────────────────
+Pillow>=11.0.0                   # PIL: Image, ImageOps used in image_utils.py for profile picture processing

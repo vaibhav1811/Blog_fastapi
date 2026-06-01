@@ -26,7 +26,7 @@ class UserPrivate(UserPublic):
 class UserUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=50)
     email: EmailStr | None = Field(default=None, max_length=120)
-    image_file: str | None = Field(default=None, min_length=1, max_length=200)
+   
 
 class Token(BaseModel):
     access_token: str
@@ -38,7 +38,8 @@ class PostBase(BaseModel):
   
 
 class PostCreate(PostBase):
-    user_id: int # temporary
+    pass
+
 
 class PostUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=100)
@@ -51,3 +52,11 @@ class PostResponse(PostBase):
     user_id:int
     date_posted: datetime
     author: UserPublic
+
+## Paginated Post Response Schema
+class PaginatedPostsResponse(BaseModel):
+    posts: list[PostResponse]
+    total: int
+    skip: int  #number of items to skip before starting to collect the result set
+    limit: int
+    has_more: bool #boolean indicating if there are more items to fetch beyond the current page of results
