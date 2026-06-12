@@ -6,7 +6,7 @@ import httpx
 from sqlalchemy import delete, select, update
 
 import models
-from database import AsyncSessionLocal, engine
+from database import AsyncSessionLocal, Base, engine
 from image_utils import PROFILE_PICS_DIR
 from main import app
 
@@ -16,7 +16,7 @@ USERS = [
     {
         "username": "CoreyMSchafer",
         "email": "CoreyMSchafer@gmail.com",
-        "password": "TestPassword1!",
+        "password": "NewPassword1!",
         "image": "corey.png",
     },
     {
@@ -282,6 +282,12 @@ async def update_post_dates() -> None:
 
 
 async def populate() -> None:
+    # Ensure all database tables exist before any data operations.
+    # The FastAPI lifespan event (which normally calls create_all) does NOT
+    # run when the app is imported directly by this script.
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(

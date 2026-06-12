@@ -184,6 +184,26 @@ async def account_page(request: Request):
         {"title": "Account"},
     )
 
+## main.py template routes
+@app.get("/forgot-password", include_in_schema=False)
+async def forgot_password_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "forgot_password.html",
+        {"title": "Forgot Password"},
+    )
+
+
+@app.get("/reset-password", include_in_schema=False)
+async def reset_password_page(request: Request):
+    response = templates.TemplateResponse(
+        request,
+        "reset_password.html",
+        {"title": "Reset Password"},
+    )
+    response.headers["Referrer-Policy"] = "no-referrer" # we set the Referrer-Policy header to "no-referrer" for the reset password page to enhance security by preventing the browser from sending the Referer header when navigating away from this page, which can help protect sensitive information in the URL (such as the reset token) from being exposed to third-party sites or in browser history, reducing the risk of token leakage and potential misuse.
+    return response
+
 ## StarletteHTTPException Handler
 @app.exception_handler(StarletteHTTPException)
 async def general_http_exception_handler(request: Request, exception: StarletteHTTPException):

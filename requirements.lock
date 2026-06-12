@@ -1,0 +1,26 @@
+# requirements.lock
+# Manually pinned top-level dependencies for reproducible installs.
+# NOTE: This is a minimal, manually-created lock. For a full, reliable lock
+# including transitive dependencies and hashes, regenerate using pip-tools
+# or Poetry (commands below).
+
+fastapi[standard]==0.136.1
+SQLAlchemy==2.0.50
+aiosqlite==0.22.1
+greenlet==3.5.1
+Pillow==11.0.0
+pwdlib[argon2]==0.3.0
+pydantic-settings==2.14.0
+PyJWT==2.13.0
+
+# To generate a proper lockfile with transitive deps and hashes (recommended):
+# 1) Using pip-tools:
+#    pip install pip-tools
+#    pip-compile --output-file=requirements.lock requirements.in
+#    pip-sync requirements.lock
+# 2) Using Poetry (if you adopt Poetry):
+#    poetry install
+#    poetry lock
+#    poetry export -f requirements.txt --output=requirements.lock --without-hashes
+# 3) Or on an existing venv, pin exact installed packages:
+#    pip freeze > requirements.lock
