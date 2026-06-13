@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 import models
-from database import Base, engine, get_db
+from database import engine, get_db
 # from schemas import PostCreate, PostResponse,PostUpdate,UserCreate, UserResponse , UserUpdate
 
 # Base.metadata.create_all(bind=engine) #this is synchronous
@@ -25,9 +25,6 @@ from config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    #startup
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     yield
     #shutdown
     await engine.dispose()
@@ -36,7 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/media", StaticFiles(directory="media"), name="media")
+# app.mount("/media", StaticFiles(directory="media"), name="media")
 
 templates = Jinja2Templates(directory="templates") 
 
@@ -201,7 +198,7 @@ async def reset_password_page(request: Request):
         "reset_password.html",
         {"title": "Reset Password"},
     )
-    response.headers["Referrer-Policy"] = "no-referrer" # we set the Referrer-Policy header to "no-referrer" for the reset password page to enhance security by preventing the browser from sending the Referer header when navigating away from this page, which can help protect sensitive information in the URL (such as the reset token) from being exposed to third-party sites or in browser history, reducing the risk of token leakage and potential misuse.
+    response.headers["Referrer-Policy"] = "no-referrer" # we set the Referrer-Policy header to "no-referrer" for the reset password page to enhance security by preventing the browser from sending the Referer header when navigating away from this page, which can help protect sensitive information in the URL (such as the reset token) from being exposed to third-party sites or in browser history, reducing the risk of token leakage and potential misuse. 
     return response
 
 ## StarletteHTTPException Handler

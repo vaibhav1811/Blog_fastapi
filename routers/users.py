@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from PIL import UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool # for running blocking code in a separate thread to avoid blocking the main event loop
-from image_utils import process_profile_image, delete_profile_image
+from image_utils import process_profile_image, delete_profile_image,upload_profile_image
 
 import models
 from database import get_db
@@ -27,6 +27,7 @@ from auth import (
      )
 from email_utils import send_password_reset_email
 from config import settings
+from botocore.exceptions import ClientError # for handling exceptions when interacting with AWS S3, such as when deleting a profile picture that may not exist in the S3 bucket. We can catch ClientError exceptions to handle cases where the file to be deleted is not found or there are issues with AWS credentials, allowing us to log the error and continue without crashing the application. This is important for maintaining robustness and ensuring that our application can gracefully handle errors related to S3 operations without affecting the user experience.
 
 
 router = APIRouter()
@@ -183,7 +184,7 @@ async def reset_password(
             # we return the same error message for both invalid and expired tokens to avoid giving away information about which tokens are in the database, this way we prevent attackers from trying to guess valid tokens based on the error messages they receive.
         )
 
-    if reset_token.expires_at.replace(tzinfo=UTC) < datetime.now(UTC): # tzinfo=UTC is used to ensure that we are comparing two timezone-aware datetime objects, since reset_token.expires_at is stored as a timezone-aware datetime in the database, we need to make sure that the current time we are comparing it to is also timezone-aware and in the same timezone (UTC) to avoid issues with naive vs aware datetime comparisons, which can lead to errors or incorrect results.
+    if reset_token.expires_at < datetime.now(UTC): 
         await db.delete(reset_token)
         await db.commit()
         raise HTTPException(
@@ -374,7 +375,7 @@ async def delete_user(user_id: int,current_user: CurrentUser, db: Annotated[Asyn
     await db.commit()
 
     if old_filename: # if the user had a profile picture, we want to delete it from the server when the user is deleted to free up storage space and avoid orphaned files. We use the delete_profile_image function, which takes the old filename as an argument and deletes the corresponding file from the server. This ensures that we don't accumulate unused profile pictures on the server over time as users are deleted.
-        delete_profile_image(old_filename)
+        await delete_profile_image(old_filename) #await here because delete_profile_image is an async function that interacts with the server to delete the file, so we need to use await with it to ensure that the file deletion is completed before the function returns. This way, we can handle any potential errors that may occur during the file deletion process and ensure that the user's profile picture is properly deleted from the server when their account is deleted.
 
 
     ## Upload Profile Picture Endpoint
@@ -400,12 +401,23 @@ async def upload_profile_picture(
         )
 
     try:
-        new_filename = await run_in_threadpool(process_profile_image, content) # we need to use run_in_threadpool here because process_profile_image is a blocking function that uses PIL for image processing, which is not asynchronous. By using run_in_threadpool, we can run the blocking code in a separate thread without blocking the main event loop of FastAPI, allowing other requests to be processed concurrently while the image is being processed.
+        processed_bytes,new_filename = await run_in_threadpool(process_profile_image, content) # we need to use run_in_threadpool here because process_profile_image is a blocking function that uses PIL for image processing, which is not asynchronous. By using run_in_threadpool, we can run the blocking code in a separate thread without blocking the main event loop of FastAPI, allowing other requests to be processed concurrently while the image is being processed.
     except UnidentifiedImageError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid image file. Please upload a valid image (JPEG, PNG, GIF, WebP).",
         ) from err
+    
+    
+    # Upload to S3 (also runs in threadpool via async wrapper)
+    try:
+       await upload_profile_image(processed_bytes, new_filename)
+    except ClientError as err:
+     raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Failed to upload image. Please try again.",
+    ) from err
+
 
     old_filename = current_user.image_file
 
@@ -414,7 +426,7 @@ async def upload_profile_picture(
     await db.refresh(current_user)
 
     if old_filename: # if there was an old profile picture, we want to delete it from the server to free up storage space and avoid orphaned files. We use the delete_profile_image function, which takes the old filename as an argument and deletes the corresponding file from the server. This ensures that we don't accumulate unused profile pictures on the server over time as users update their profile pictures.
-        delete_profile_image(old_filename)
+        await delete_profile_image(old_filename)
 
     return current_user
 
@@ -422,7 +434,7 @@ async def upload_profile_picture(
 @router.delete("/{user_id}/picture", response_model=UserPrivate)
 async def delete_user_picture(
     user_id: int,
-    current_user: CurrentUser,
+    current_user: CurrentUser, 
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     if current_user.id != user_id:
@@ -443,7 +455,7 @@ async def delete_user_picture(
     await db.commit()
     await db.refresh(current_user)
 
-    delete_profile_image(old_filename)
+    await delete_profile_image(old_filename)
 
     return current_user
 

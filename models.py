@@ -6,6 +6,8 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
+from config import settings # for accessing configuration settings, such as AWS credentials and S3 bucket name
+
 
 
 class User(Base):
@@ -39,7 +41,7 @@ class User(Base):
     @property
     def image_path(self) -> str:
         if self.image_file:
-            return f"/media/profile_pics/{self.image_file}"
+            return f"https://{settings.s3_bucket_name}.s3.{settings.s3_region}.amazonaws.com/profile_pics/{self.image_file}"
         return "/static/profile_pics/default.jpg"
 
 
@@ -58,6 +60,9 @@ class Post(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
     )
+    ## Likes Field
+    # default = 0, server_default="0" ensures that when a new post is created, the likes field is initialized to 0 both in the application and in the database. This prevents null values and ensures consistency in the data.
+    likes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     author: Mapped[User] = relationship(back_populates="posts")
 

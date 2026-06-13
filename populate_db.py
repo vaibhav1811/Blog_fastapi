@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -6,7 +7,7 @@ import httpx
 from sqlalchemy import delete, select, update
 
 import models
-from database import AsyncSessionLocal, Base, engine
+from database import AsyncSessionLocal, engine
 from image_utils import PROFILE_PICS_DIR
 from main import app
 
@@ -16,7 +17,7 @@ USERS = [
     {
         "username": "CoreyMSchafer",
         "email": "CoreyMSchafer@gmail.com",
-        "password": "NewPassword1!",
+        "password": "TestPassword1!",
         "image": "corey.png",
     },
     {
@@ -243,6 +244,7 @@ async def clear_existing_data() -> None:
 
     # Clear database tables (order respects foreign keys)
     async with AsyncSessionLocal() as db:
+        await db.execute(delete(models.PasswordResetToken))
         await db.execute(delete(models.Post))
         await db.execute(delete(models.User))
         await db.commit()
@@ -282,12 +284,6 @@ async def update_post_dates() -> None:
 
 
 async def populate() -> None:
-    # Ensure all database tables exist before any data operations.
-    # The FastAPI lifespan event (which normally calls create_all) does NOT
-    # run when the app is imported directly by this script.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(
@@ -386,4 +382,6 @@ async def populate() -> None:
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(populate())
