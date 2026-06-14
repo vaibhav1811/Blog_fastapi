@@ -1,14 +1,8 @@
+.git/
 
-.env
-.venv/
-__pycache__/
-*.py[cod]
-*.sqlite3
-media/profile_pics/
-*.log
-*.env.local
-*.db
-.DS_Store
+tests/
+
+.python-version
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,macos,visualstudiocode,dotenv
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,macos,visualstudiocode,dotenv
