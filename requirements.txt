@@ -19,3 +19,4 @@ pydantic-settings>=2.14.0        # BaseSettings for loading config from .env (co
 
 # ── Image Processing ─────────────────────────────────────────────
 Pillow>=11.0.0                   # PIL: Image, ImageOps used in image_utils.py for profile picture processing
+httpx>=0.29.0                     # Async HTTP client used for sending email via Brevo HTTP API

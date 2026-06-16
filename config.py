@@ -35,6 +35,8 @@ class Settings(BaseSettings): #pydantic_settings.BaseSettings is a subclass of p
     mail_password: SecretStr = SecretStr("")
     mail_from: str = "noreply@example.com"
     mail_use_tls: bool = True
+    brevo_api_key: SecretStr | None = None
+    resend_api_key: SecretStr | None = None
 
     frontend_url: str = "http://localhost:8000"
 settings = Settings() #loaded from .env file
