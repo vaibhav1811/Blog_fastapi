@@ -1,4 +1,4 @@
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings,SettingsConfigDict
 
 
@@ -39,4 +39,15 @@ class Settings(BaseSettings): #pydantic_settings.BaseSettings is a subclass of p
     resend_api_key: SecretStr | None = None
 
     frontend_url: str = "http://localhost:8000"
+
+    @field_validator("frontend_url", mode="before")
+    @classmethod
+    def strip_trailing_slash(cls, v: str) -> str:
+        """Remove any trailing slash from FRONTEND_URL to prevent double-slash URLs.
+        
+        Example: 'https://my-app.onrender.com/' → 'https://my-app.onrender.com'
+        This ensures reset_url = f"{settings.frontend_url}/reset-password?token=..."
+        always produces a valid single-slash URL.
+        """
+        return v.rstrip("/")
 settings = Settings() #loaded from .env file
