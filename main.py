@@ -1,7 +1,11 @@
 from typing import Annotated
 from contextlib import asynccontextmanager
+import asyncio
+import logging
+import os
 from fastapi.exception_handlers import http_exception_handler,request_validation_exception_handler
  
+import httpx
 from fastapi import FastAPI, Request, HTTPException, status,Depends
 from fastapi.exceptions import RequestValidationError
 # from fastapi.responses import JSONResponse
@@ -23,10 +27,45 @@ from routers import posts, users
 from config import settings
 
 
+logger = logging.getLogger(__name__)
+
+
+async def keep_alive_ping():
+    """
+    Self-ping background task to prevent Render's free tier from spinning down
+    the instance due to inactivity. Pings the /health endpoint every 10 minutes.
+    Only runs when the RENDER_EXTERNAL_URL environment variable is set
+    (i.e., only in the Render production environment).
+    """
+    render_url = os.getenv("RENDER_EXTERNAL_URL")
+    if not render_url:
+        logger.info("RENDER_EXTERNAL_URL not set — keep-alive ping disabled (local dev mode).")
+        return
+
+    health_url = f"{render_url.rstrip('/')}/health"
+    logger.info(f"Keep-alive ping task started. Will ping {health_url} every 10 minutes.")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        while True:
+            await asyncio.sleep(10 * 60)  # wait 10 minutes
+            try:
+                resp = await client.get(health_url)
+                logger.info(f"Keep-alive ping → {resp.status_code}")
+            except Exception as exc:
+                logger.warning(f"Keep-alive ping failed: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Start the self-ping keep-alive task on startup
+    ping_task = asyncio.create_task(keep_alive_ping())
     yield
-    #shutdown
+    # Shutdown: cancel the ping task cleanly
+    ping_task.cancel()
+    try:
+        await ping_task
+    except asyncio.CancelledError:
+        pass
     await engine.dispose()
   
 
