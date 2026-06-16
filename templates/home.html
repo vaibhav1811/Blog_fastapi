@@ -20,7 +20,12 @@
              href="{{url_for('post_page', post_id=post.id)}}">{{ post.title }}
             </a>
           </h2>
-          <p class="article-content">{{ post.content }}</p>
+          <p class="article-content">
+            {{ post.content | truncate(150, True, '...') }}
+            {% if post.content | length > 150 %}
+              <a href="{{url_for('post_page', post_id=post.id)}}" class="read-more-link">Read more &rarr;</a>
+            {% endif %}
+          </p>
         </div>
       </div>
     </article>
@@ -39,6 +44,13 @@
 {% block scripts %}
   <script type="module">
   import { escapeHtml, formatDate } from '/static/js/utils.js';
+
+  // Truncate text to maxLen characters at a word boundary
+  function truncateText(text, maxLen) {
+    if (text.length <= maxLen) return escapeHtml(text);
+    const truncated = text.slice(0, maxLen).replace(/\s+\S*$/, '');
+    return escapeHtml(truncated) + '...';
+  }
 
   // Pagination state - initialized from server-rendered values
   let currentOffset = {{ posts|length | tojson }};  // Start after server-rendered posts
@@ -62,7 +74,7 @@
             <h2>
               <a class="article-title" href="/posts/${post.id}">${escapeHtml(post.title)}</a>
             </h2>
-            <p class="article-content">${escapeHtml(post.content)}</p>
+             <p class="article-content">${truncateText(post.content, 150)} ${post.content.length > 150 ? `<a href="/posts/${post.id}" class="read-more-link">Read more &rarr;</a>` : ''}</p>
           </div>
         </div>
       </article>

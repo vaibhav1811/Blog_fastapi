@@ -111,6 +111,34 @@ a.article-title:focus {
   font-size: 1.25rem;
 }
 
+/* "Read more" link in post previews */
+.read-more-link {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-steel);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}
+
+.read-more-link:hover,
+.read-more-link:focus {
+  color: var(--color-link-hover);
+  border-bottom-color: var(--color-link-hover);
+}
+
+[data-bs-theme="dark"] .read-more-link {
+  color: #8aadc8;
+}
+
+[data-bs-theme="dark"] .read-more-link:hover,
+[data-bs-theme="dark"] .read-more-link:focus {
+  color: #b4cde0;
+  border-bottom-color: #b4cde0;
+}
+
 .article-img {
   height: var(--article-img-size);
   width: var(--article-img-size);
