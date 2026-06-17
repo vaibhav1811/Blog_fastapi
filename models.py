@@ -149,6 +149,9 @@ class Comment(Base):
         index=True,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Denormalized counter maintained by create/delete endpoints (no COUNT(*) needed).
+    # Only meaningful on top-level comments; replies always have reply_count = 0.
+    reply_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # parent_id: NULL = top-level comment; set = reply to another comment
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("comments.id", ondelete="CASCADE"),
