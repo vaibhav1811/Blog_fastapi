@@ -131,6 +131,47 @@
 </div>
 
   
+
+<!-- ── Comments Section ──────────────────────────────────────── -->
+<section class="comments-section content-section py-3 px-4 mb-4"
+         id="comments"
+         aria-labelledby="commentsHeading">
+
+  <h3 id="commentsHeading">Comments</h3>
+
+  <!-- Comment form: hidden by default, shown by JS when user is logged in -->
+  <form class="comment-form mb-4 d-none" id="commentForm" novalidate aria-label="Write a comment">
+    <textarea class="form-control"
+              id="commentInput"
+              name="content"
+              rows="2"
+              maxlength="2000"
+              placeholder="Write a comment…"
+              aria-label="Comment text"
+              required></textarea>
+    <div class="d-flex justify-content-between align-items-center mt-1">
+      <span class="char-counter" id="charCounter" aria-live="polite">0 / 2000</span>
+      <button type="submit" class="btn btn-primary btn-sm">Post</button>
+    </div>
+  </form>
+
+  <!-- Login prompt for guests -->
+  <p class="text-body-secondary mb-3" id="loginPrompt" style="font-size:0.9rem;">
+    <a href="/login">Log in</a> to leave a comment.
+  </p>
+
+  <!-- Comments are injected here by comments.js -->
+  <div id="commentsList" aria-live="polite" aria-label="Comment list"></div>
+
+  <!-- Load more top-level comments (hidden until there IS a next page) -->
+  <div id="loadMoreCommentsWrap" style="display:none!important" class="text-center mt-3">
+    <button id="loadMoreCommentsBtn" class="btn btn-outline-secondary btn-sm">
+      Load more comments
+    </button>
+  </div>
+
+</section>
+
 {% endblock content %}
 
 
@@ -139,9 +180,19 @@
     import { getCurrentUser, getToken } from '/static/js/auth.js';
     import { getErrorMessage, showModal, hideModal } from '/static/js/utils.js';
     import { initLikeButtons } from '/static/js/likes.js';
+    import { initComments } from '/static/js/comments.js';
 
     // Wire up all like buttons on this page
     initLikeButtons();
+
+    // Initialise the comments section
+    initComments({{ post.id }});
+
+    // Hide the guest login prompt once JS confirms the user is logged in
+    getCurrentUser().then(user => {
+        const prompt = document.getElementById('loginPrompt');
+        if (user && prompt) prompt.style.display = 'none';
+    });
 
     const postId = "{{ post.id }}";
     const postUserId = parseInt("{{ post.user_id }}", 10);

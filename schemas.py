@@ -87,8 +87,10 @@ class CommentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime | None
     author: UserPublic
-    ## Replies are included when loading top-level comments on the post page.
-    ## Empty list by default — never None — so templates can always iterate.
+    ## Denormalized counter — read directly from DB column, no COUNT(*) query.
+    reply_count: int = 0
+    ## Top-N replies are populated by a window-function batch query, not a lazy ORM load.
+    ## Always a list (never None) so the JS can safely iterate.
     replies: list["CommentResponse"] = []
 
 # Required for the self-referential replies field
@@ -96,9 +98,22 @@ CommentResponse.model_rebuild()
 
 
 class PaginatedCommentsResponse(BaseModel):
+    """
+    Cursor-based paginated response for comments and replies.
+
+    Pagination flow:
+      1. Fetch first page (no cursor).
+      2. If next_cursor is not None, pass it as ?cursor=<id> to get the next page.
+      3. When next_cursor is None, you have reached the end.
+
+    This replaces the old skip/limit/total approach. No total count is returned
+    because computing it requires a COUNT(*) query and is not needed for infinite-
+    scroll UIs (same approach used by Instagram, YouTube comment threads).
+    """
     comments: list[CommentResponse]
-    total: int
-    has_more: bool
+    ## The ID of the last comment in this page. Pass as ?cursor on the next request.
+    ## None means this is the final page — no more comments exist.
+    next_cursor: int | None
 
 
 ## Paginated Post Response Schema
