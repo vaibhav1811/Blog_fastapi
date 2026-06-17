@@ -111,6 +111,34 @@ a.article-title:focus {
   font-size: 1.25rem;
 }
 
+/* "Read more" link in post previews */
+.read-more-link {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-steel);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease-in-out, border-color 0.2s ease-in-out;
+}
+
+.read-more-link:hover,
+.read-more-link:focus {
+  color: var(--color-link-hover);
+  border-bottom-color: var(--color-link-hover);
+}
+
+[data-bs-theme="dark"] .read-more-link {
+  color: #8aadc8;
+}
+
+[data-bs-theme="dark"] .read-more-link:hover,
+[data-bs-theme="dark"] .read-more-link:focus {
+  color: #b4cde0;
+  border-bottom-color: #b4cde0;
+}
+
 .article-img {
   height: var(--article-img-size);
   width: var(--article-img-size);
@@ -119,6 +147,83 @@ a.article-title:focus {
   border: 1px solid var(--color-border-light);
   box-shadow: 0 0 0 2px var(--color-bg-content);
 }
+
+/* ─── Like Button ──────────────────────────────────────────────── */
+.like-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 2rem;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease,
+    transform 0.1s ease;
+  user-select: none;
+}
+
+.like-btn:hover {
+  border-color: #e0607e;
+  background: rgba(224, 96, 126, 0.07);
+  color: #e0607e;
+}
+
+.like-btn.liked {
+  border-color: #e0607e;
+  background: rgba(224, 96, 126, 0.1);
+  color: #c9365a;
+}
+
+/* Pop animation when liked */
+.like-btn:active {
+  transform: scale(0.92);
+}
+
+@keyframes like-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.25); }
+  70%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+.like-btn.pop .like-icon {
+  display: inline-block;
+  animation: like-pop 0.35s ease forwards;
+}
+
+.like-icon {
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.like-count {
+  min-width: 1ch;
+  text-align: left;
+}
+
+/* Dark mode */
+[data-bs-theme="dark"] .like-btn {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+[data-bs-theme="dark"] .like-btn:hover {
+  border-color: #f4889a;
+  background: rgba(244, 136, 154, 0.1);
+  color: #f4889a;
+}
+
+[data-bs-theme="dark"] .like-btn.liked {
+  border-color: #f4889a;
+  background: rgba(244, 136, 154, 0.12);
+  color: #f4889a;
+}
+
 
 .article-metadata {
   padding-bottom: 0.063rem; /* 1px converted to rem */
@@ -293,3 +398,162 @@ a.article-title:focus {
 .modal-header.bg-danger .modal-title {
   color: #ffffff !important;
 }
+
+/* ─── Comment Count Badge (post cards) ────────────────────────── */
+.comment-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  opacity: 0.7;
+  text-decoration: none;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.comment-count-badge:hover {
+  opacity: 1;
+  color: var(--color-steel);
+  text-decoration: none;
+}
+
+/* ─── Comments Section (post detail page) ─────────────────────── */
+.comments-section {
+  margin-top: 1.5rem;
+}
+
+.comments-section h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--color-text-heading);
+}
+
+/* Comment form */
+.comment-form textarea {
+  resize: vertical;
+  min-height: 80px;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.comment-form .char-counter {
+  font-size: 0.78rem;
+  color: var(--color-text-primary);
+  opacity: 0.55;
+  text-align: right;
+  margin-top: 0.2rem;
+}
+
+/* Individual comment card */
+.comment-card {
+  border-left: 3px solid var(--color-border);
+  padding: 0.6rem 0.75rem 0.6rem 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: 0 0.4rem 0.4rem 0;
+  background: transparent;
+  transition: border-color 0.2s ease;
+}
+
+.comment-card:hover {
+  border-left-color: var(--color-steel);
+}
+
+.comment-meta {
+  font-size: 0.82rem;
+  color: var(--color-text-primary);
+  opacity: 0.65;
+  margin-bottom: 0.25rem;
+}
+
+.comment-meta a {
+  font-weight: 700;
+  opacity: 1;
+  color: var(--color-text-heading);
+}
+
+.comment-meta a:hover {
+  color: var(--color-link-hover);
+}
+
+.comment-body {
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+/* Inline edit textarea inside comment */
+.comment-edit-area {
+  width: 100%;
+  resize: vertical;
+  min-height: 60px;
+  border-radius: 0.4rem;
+  font-size: 0.95rem;
+  margin-top: 0.4rem;
+}
+
+/* Reply indentation */
+.reply-card {
+  border-left: 2px solid var(--color-border-light);
+  margin-left: 1.5rem;
+  margin-top: 0.5rem;
+  padding-left: 0.75rem;
+}
+
+.reply-card:hover {
+  border-left-color: var(--color-steel);
+}
+
+/* Action links (Reply / Edit / Delete) */
+.comment-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+.comment-action-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-text-primary);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.comment-action-btn:hover {
+  opacity: 1;
+}
+
+.comment-action-btn.reply-btn:hover  { color: var(--color-steel); }
+.comment-action-btn.edit-btn:hover   { color: #527c9f; }
+.comment-action-btn.delete-btn:hover { color: #a85b5b; }
+
+/* Inline reply form (hidden by default) */
+.reply-form {
+  display: none;
+  margin-top: 0.5rem;
+  margin-left: 1.5rem;
+}
+
+.reply-form.visible {
+  display: block;
+}
+
+/* Dark mode tweaks */
+[data-bs-theme="dark"] .comment-card {
+  border-left-color: var(--color-border);
+}
+
+[data-bs-theme="dark"] .comment-card:hover,
+[data-bs-theme="dark"] .reply-card:hover {
+  border-left-color: #8aadc8;
+}
+
+[data-bs-theme="dark"] .comment-meta a {
+  color: var(--color-text-heading);
+}

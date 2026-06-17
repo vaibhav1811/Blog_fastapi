@@ -8,23 +8,32 @@ from fastapi.exception_handlers import http_exception_handler,request_validation
 import httpx
 from fastapi import FastAPI, Request, HTTPException, status,Depends
 from fastapi.exceptions import RequestValidationError
-# from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-# from fastapi.responses import HTMLResponse 
 from fastapi.templating import Jinja2Templates 
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import select,func,text
-# from sqlalchemy.orm import Session 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 import models
 from database import engine, get_db
-# from schemas import PostCreate, PostResponse,PostUpdate,UserCreate, UserResponse , UserUpdate
-
-# Base.metadata.create_all(bind=engine) #this is synchronous
 from routers import posts, users
+from routers import comments as comments_router
+from routers.posts import _fetch_like_data, get_optional_user
 from config import settings
+
+
+async def _fetch_comment_counts(db, post_ids: list[int]) -> dict[int, int]:
+    """Batch-fetch comment counts for a list of post IDs (top-level + replies)."""
+    if not post_ids:
+        return {}
+    from sqlalchemy import select, func
+    result = await db.execute(
+        select(models.Comment.post_id, func.count().label("n"))
+        .where(models.Comment.post_id.in_(post_ids))
+        .group_by(models.Comment.post_id)
+    )
+    return {row.post_id: row.n for row in result}
 
 
 logger = logging.getLogger(__name__)
@@ -78,6 +87,18 @@ templates = Jinja2Templates(directory="templates")
 
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(posts.router, prefix="/api/posts", tags=["posts"])
+# Comments as a sub-route of posts (POST /api/posts/{post_id}/comments)
+app.include_router(
+    comments_router.router,
+    prefix="/api/posts/{post_id}/comments",
+    tags=["comments"],
+)
+# Standalone comment routes for edit/delete (no post_id prefix needed)
+app.include_router(
+    comments_router.router,
+    prefix="/api/comments",
+    tags=["comments"],
+)
 
 ## Security Headers Middleware
 @app.middleware("http")
@@ -135,7 +156,11 @@ async def health_check(db: Annotated[AsyncSession, Depends(get_db)]):
 ## home route - paginated
 @app.get("/", include_in_schema=False, name="home")
 @app.get("/posts", include_in_schema=False, name="posts")
-async def home(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
+async def home(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[models.User | None, Depends(get_optional_user)] = None,
+):
     count_result = await db.execute(select(func.count()).select_from(models.Post))
     total = count_result.scalar() or 0
 
@@ -145,15 +170,25 @@ async def home(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
         .order_by(models.Post.date_posted.desc())
         .limit(settings.post_per_page),
     )
-    posts = result.scalars().all()
+    posts_list = result.scalars().all()
+    has_more = len(posts_list) < total
 
-    has_more = len(posts) < total
+    # Batch-fetch like counts + comment counts (3 queries total for any page size)
+    post_ids = [p.id for p in posts_list]
+    like_count_map, liked_post_ids = await _fetch_like_data(db, post_ids, current_user)
+    comment_count_map = await _fetch_comment_counts(db, post_ids)
+
+    # Attach counts directly to ORM objects for Jinja access
+    for post in posts_list:
+        post.like_count = like_count_map.get(post.id, 0)
+        post.user_has_liked = post.id in liked_post_ids
+        post.comment_count = comment_count_map.get(post.id, 0)
 
     return templates.TemplateResponse(
         request,
         "home.html",
         {
-            "posts": posts,
+            "posts": posts_list,
             "title": "Home",
             "limit": settings.post_per_page,
             "has_more": has_more,
@@ -163,7 +198,12 @@ async def home(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
 
 ## post_page
 @app.get("/posts/{post_id}", include_in_schema=False)
-async def post_page(request: Request, post_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+async def post_page(
+    request: Request,
+    post_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[models.User | None, Depends(get_optional_user)] = None,
+):
     result = await db.execute(
         select(models.Post)
         .options(selectinload(models.Post.author))
@@ -171,6 +211,13 @@ async def post_page(request: Request, post_id: int, db: Annotated[AsyncSession, 
         )
     post = result.scalars().first()
     if post:
+        # Attach like + comment count for the template
+        like_count_map, liked_post_ids = await _fetch_like_data(db, [post_id], current_user)
+        comment_count_map = await _fetch_comment_counts(db, [post_id])
+        post.like_count = like_count_map.get(post_id, 0)
+        post.user_has_liked = post_id in liked_post_ids
+        post.comment_count = comment_count_map.get(post_id, 0)
+
         title = post.title[:50]
         return templates.TemplateResponse(
             request,
@@ -187,6 +234,7 @@ async def user_posts_page(
     request: Request,
     user_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[models.User | None, Depends(get_optional_user)] = None,
 ):
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalars().first()
@@ -210,15 +258,23 @@ async def user_posts_page(
         .order_by(models.Post.date_posted.desc())
         .limit(settings.post_per_page),
     )
-    posts = result.scalars().all()
+    posts_list = result.scalars().all()
+    has_more = len(posts_list) < total
 
-    has_more = len(posts) < total
+    # Batch-fetch like counts + comment counts
+    post_ids = [p.id for p in posts_list]
+    like_count_map, liked_post_ids = await _fetch_like_data(db, post_ids, current_user)
+    comment_count_map = await _fetch_comment_counts(db, post_ids)
+    for post in posts_list:
+        post.like_count = like_count_map.get(post.id, 0)
+        post.user_has_liked = post.id in liked_post_ids
+        post.comment_count = comment_count_map.get(post.id, 0)
 
     return templates.TemplateResponse(
         request,
         "user_posts.html",
         {
-            "posts": posts,
+            "posts": posts_list,
             "user": user,
             "title": f"{user.username}'s Posts",
             "limit": settings.post_per_page,

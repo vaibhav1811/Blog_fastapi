@@ -21,7 +21,26 @@
                             <a class="article-title"
                                href="{{ url_for('post_page', post_id=post.id) }}">{{ post.title }}</a>
                         </h2>
-                        <p class="article-content">{{ post.content }}</p>
+                        <p class="article-content">
+                            {{ post.content | truncate(150, True, '...') }}
+                            {% if post.content | length > 150 %}
+                              <a href="{{ url_for('post_page', post_id=post.id) }}" class="read-more-link">Read more &rarr;</a>
+                            {% endif %}
+                        </p>
+                        <!-- Like button -->
+                        <div class="mt-2">
+                          <button
+                            class="like-btn {% if post.user_has_liked %}liked{% endif %}"
+                            data-like-btn
+                            data-post-id="{{ post.id }}"
+                            data-liked="{{ 'true' if post.user_has_liked else 'false' }}"
+                            data-like-count="{{ post.like_count }}"
+                            aria-label="{% if post.user_has_liked %}Unlike this post ({{ post.like_count }} likes){% else %}Like this post ({{ post.like_count }} likes){% endif %}"
+                          >
+                            <span class="like-icon">{% if post.user_has_liked %}❤️{% else %}🤍{% endif %}</span>
+                            <span class="like-count">{{ post.like_count }}</span>
+                          </button>
+                        </div>
                     </div>
                 </div>
             </article>
@@ -38,6 +57,17 @@
 {% block scripts %}
     <script type="module">
   import { escapeHtml, formatDate } from '/static/js/utils.js';
+  import { initLikeButtons } from '/static/js/likes.js';
+
+  // Initialise like buttons on server-rendered posts
+  initLikeButtons();
+
+  // Truncate text to maxLen characters at a word boundary
+  function truncateText(text, maxLen) {
+    if (text.length <= maxLen) return escapeHtml(text);
+    const truncated = text.slice(0, maxLen).replace(/\s+\S*$/, '');
+    return escapeHtml(truncated) + '...';
+  }
 
   const userId = {{ user.id | tojson }};
   let currentOffset = {{ posts|length | tojson }};
@@ -60,7 +90,20 @@
             <h2>
               <a class="article-title" href="/posts/${post.id}">${escapeHtml(post.title)}</a>
             </h2>
-            <p class="article-content">${escapeHtml(post.content)}</p>
+            <p class="article-content">${truncateText(post.content, 150)} ${post.content.length > 150 ? `<a href="/posts/${post.id}" class="read-more-link">Read more &rarr;</a>` : ''}</p>
+            <div class="mt-2">
+              <button
+                class="like-btn"
+                data-like-btn
+                data-post-id="${post.id}"
+                data-liked="false"
+                data-like-count="${post.like_count ?? 0}"
+                aria-label="Like this post (${post.like_count ?? 0} likes)"
+              >
+                <span class="like-icon">🤍</span>
+                <span class="like-count">${post.like_count ?? 0}</span>
+              </button>
+            </div>
           </div>
         </div>
       </article>
@@ -85,6 +128,7 @@
       for (const post of data.posts) {
         postsContainer.insertAdjacentHTML('beforeend', createPostHTML(post));
       }
+      initLikeButtons(postsContainer);
 
       currentOffset += data.posts.length;
       hasMore = data.has_more;

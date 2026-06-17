@@ -15,6 +15,24 @@
         </div>
         <h2 class="article-title">{{ post.title }}</h2>
         <p class="article-content">{{ post.content }}</p>
+
+        <!-- Like button — full post page -->
+        <div class="d-flex align-items-center gap-3 mt-3 pt-3 border-top">
+          <button
+            class="like-btn {% if post.user_has_liked %}liked{% endif %}"
+            data-like-btn
+            data-post-id="{{ post.id }}"
+            data-liked="{{ 'true' if post.user_has_liked else 'false' }}"
+            data-like-count="{{ post.like_count }}"
+            aria-label="{% if post.user_has_liked %}Unlike this post ({{ post.like_count }} likes){% else %}Like this post ({{ post.like_count }} likes){% endif %}"
+            style="font-size: 1rem; padding: 0.45rem 1rem;"
+          >
+            <span class="like-icon">{% if post.user_has_liked %}❤️{% else %}🤍{% endif %}</span>
+            <span class="like-count">{{ post.like_count }}</span>
+            <span class="ms-1">{% if post.user_has_liked %}Liked{% else %}Like{% endif %}</span>
+          </button>
+        </div>
+
         <!-- Only show edit/delete options if the user is the author -->
          
         
@@ -120,6 +138,10 @@
 <script type="module">
     import { getCurrentUser, getToken } from '/static/js/auth.js';
     import { getErrorMessage, showModal, hideModal } from '/static/js/utils.js';
+    import { initLikeButtons } from '/static/js/likes.js';
+
+    // Wire up all like buttons on this page
+    initLikeButtons();
 
     const postId = "{{ post.id }}";
     const postUserId = parseInt("{{ post.user_id }}", 10);

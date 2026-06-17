@@ -37,5 +37,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# exec replaces shell so fastapi receives SIGTERM for clean shutdown
-CMD ["/bin/sh", "-c", "exec fastapi run --host 0.0.0.0 --port \"$PORT\" --proxy-headers --forwarded-allow-ips '*'"]
+# Run migrations then start the server.
+# `alembic upgrade head` is idempotent — it only applies pending migrations
+# and is safe to run on every deploy. Using `&&` ensures the server only
+# starts if migrations succeed, preventing a broken app from coming online.
+CMD ["/bin/sh", "-c", "alembic upgrade head && exec fastapi run --host 0.0.0.0 --port \"$PORT\" --proxy-headers --forwarded-allow-ips '*'"]
