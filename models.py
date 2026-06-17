@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -22,7 +22,6 @@ class User(Base):
         nullable=True,
         default=None,
     )
-     
     
 
     posts: Mapped[list[Post]] = relationship(
@@ -36,7 +35,18 @@ class User(Base):
         cascade="all, delete-orphan",
         # This relationship allows us to access the password reset tokens associated with a user. The cascade option ensures that when a user is deleted, all their associated password reset tokens are also deleted, preventing orphaned records in the database and maintaining data integrity.
     )
-    
+
+    ## User.liked_posts relationship — all PostLike rows created by this user
+    liked_posts: Mapped[list[PostLike]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    ## User.comments relationship
+    comments: Mapped[list[Comment]] = relationship(
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def image_path(self) -> str:
@@ -60,11 +70,117 @@ class Post(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
     )
-    ## Likes Field
-    # default = 0, server_default="0" ensures that when a new post is created, the likes field is initialized to 0 both in the application and in the database. This prevents null values and ensures consistency in the data.
-    likes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # NOTE: The old `likes` counter column has been removed.
+    # Like counts are now computed from the post_likes junction table,
+    # which provides per-user tracking and prevents duplicate likes.
 
     author: Mapped[User] = relationship(back_populates="posts")
+
+    ## Post.post_likes relationship — all PostLike rows for this post
+    post_likes: Mapped[list[PostLike]] = relationship(
+        back_populates="post",
+        cascade="all, delete-orphan",
+    )
+
+    ## Post.comments relationship — all Comments for this post
+    comments: Mapped[list[Comment]] = relationship(
+        back_populates="post",
+        cascade="all, delete-orphan",
+    )
+
+
+class PostLike(Base):
+    """
+    Junction table recording which user liked which post.
+
+    Uses a composite primary key (user_id, post_id) to enforce
+    uniqueness at the database level — a user can only like a
+    post once, with zero application-level duplicate checks.
+
+    Indexes:
+      - post_id index (created automatically from FK) enables fast
+        COUNT(*) GROUP BY queries when loading like counts for a
+        page of posts.
+      - user_id index enables fast lookup of all posts a user liked.
+    """
+    __tablename__ = "post_likes"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    post_id: Mapped[int] = mapped_column(
+        ForeignKey("posts.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
+
+    user: Mapped[User] = relationship(back_populates="liked_posts")
+    post: Mapped[Post] = relationship(back_populates="post_likes")
+
+
+class Comment(Base):
+    """
+    Stores comments (and optionally replies) on blog posts.
+
+    parent_id is nullable:
+      - NULL  → top-level comment
+      - set   → reply to another comment (one level of nesting supported)
+
+    Cascade delete: deleting a post removes all its comments.
+    Cascade delete on replies: deleting a top-level comment removes its replies.
+    """
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[int] = mapped_column(
+        ForeignKey("posts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # parent_id: NULL = top-level comment; set = reply to another comment
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("comments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        default=None,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
+
+    author: Mapped[User] = relationship(back_populates="comments")
+    post: Mapped[Post] = relationship(back_populates="comments")
+
+    # Self-referential for replies
+    replies: Mapped[list[Comment]] = relationship(
+        back_populates="parent",
+        foreign_keys=[parent_id],
+        cascade="all, delete-orphan",
+    )
+    parent: Mapped[Comment | None] = relationship(
+        back_populates="replies",
+        remote_side=[id],
+        foreign_keys=[parent_id],
+    )
+
 
 ## PasswordResetToken model
 class PasswordResetToken(Base):
@@ -82,4 +198,4 @@ class PasswordResetToken(Base):
         default=lambda: datetime.now(UTC),
     )
 
-    user: Mapped[User] = relationship(back_populates="reset_tokens")
+    user: Mapped[User] = relationship(back_populates="reset_tokens")

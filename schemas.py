@@ -49,9 +49,57 @@ class PostResponse(PostBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id:int
+    user_id: int
     date_posted: datetime
     author: UserPublic
+    ## Like fields — populated by batch queries, not DB columns.
+    like_count: int = 0
+    user_has_liked: bool = False
+    ## Comment count — populated by batch queries, not DB columns.
+    comment_count: int = 0
+
+
+## Like Toggle Response
+class LikeResponse(BaseModel):
+    liked: bool       # True = user now likes the post, False = unliked
+    like_count: int   # Updated total count after the toggle
+
+
+## ── Comment Schemas ──────────────────────────────────────────────
+
+class CommentCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+    parent_id: int | None = None   # None = top-level comment; set = reply
+
+
+class CommentUpdate(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class CommentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    post_id: int
+    user_id: int
+    content: str
+    parent_id: int | None
+    created_at: datetime
+    updated_at: datetime | None
+    author: UserPublic
+    ## Replies are included when loading top-level comments on the post page.
+    ## Empty list by default — never None — so templates can always iterate.
+    replies: list["CommentResponse"] = []
+
+# Required for the self-referential replies field
+CommentResponse.model_rebuild()
+
+
+class PaginatedCommentsResponse(BaseModel):
+    comments: list[CommentResponse]
+    total: int
+    has_more: bool
+
 
 ## Paginated Post Response Schema
 class PaginatedPostsResponse(BaseModel):
@@ -59,7 +107,8 @@ class PaginatedPostsResponse(BaseModel):
     total: int
     skip: int  #number of items to skip before starting to collect the result set
     limit: int
-    has_more: bool #boolean indicating if there are more items to fetch beyond the current page of 
+    has_more: bool #boolean indicating if there are more items to fetch beyond the current page of
+
     
 ## Password Reset Schemas
 class ForgotPasswordRequest(BaseModel):
