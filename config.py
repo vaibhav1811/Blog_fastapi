@@ -1,5 +1,5 @@
 from pydantic import SecretStr, field_validator
-from pydantic_settings import BaseSettings,SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings): #pydantic_settings.BaseSettings is a subclass of pydantic.BaseModel that provides additional functionality for loading settings from environment variables and .env files. It allows you to define your settings as a class with attributes, and it will automatically load the values from the specified sources.
@@ -39,6 +39,29 @@ class Settings(BaseSettings): #pydantic_settings.BaseSettings is a subclass of p
     resend_api_key: SecretStr | None = None
 
     frontend_url: str = "http://localhost:8000"
+
+    # ── Environment & Docs Access ────────────────────────────────────────────
+    # Set APP_ENV=production in your hosting platform to hide Swagger/ReDoc.
+    # Accepted values: "development", "production"
+    app_env: str = "development"
+
+    # Comma-separated list of IP addresses that may access /docs and /redoc
+    # even in production (e.g. your team's static IPs or VPN exit IP).
+    # Example: DOCS_ALLOWED_IPS=203.0.113.10,198.51.100.5
+    # Leave empty to block docs for everyone in production.
+    docs_allowed_ips: str = ""
+
+    @property
+    def is_production(self) -> bool:
+        """Returns True when running in the production environment."""
+        return self.app_env.lower() == "production"
+
+    @property
+    def allowed_ips_set(self) -> set[str]:
+        """Returns the parsed set of IPs allowed to view API docs in production."""
+        if not self.docs_allowed_ips:
+            return set()
+        return {ip.strip() for ip in self.docs_allowed_ips.split(",") if ip.strip()}
 
     @field_validator("frontend_url", mode="before")
     @classmethod

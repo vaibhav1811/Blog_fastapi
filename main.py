@@ -78,7 +78,24 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
   
 
-app = FastAPI(lifespan=lifespan)
+# ── Swagger / ReDoc visibility ──────────────────────────────────────────────
+# In production, docs are fully disabled unless the requesting IP is in the
+# DOCS_ALLOWED_IPS allowlist.  In development, docs are always available.
+_docs_url: str | None = "/docs"
+_redoc_url: str | None = "/redoc"
+
+if settings.is_production and not settings.allowed_ips_set:
+    # No allowlist defined → disable docs routes entirely (fastest / safest)
+    _docs_url = None
+    _redoc_url = None
+
+app = FastAPI(
+    lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    title="FastAPI Blog",
+    version="1.0.0",
+)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 # app.mount("/media", StaticFiles(directory="media"), name="media")
@@ -99,6 +116,28 @@ app.include_router(
     prefix="/api/comments",
     tags=["comments"],
 )
+
+## Docs IP-Guard Middleware
+# When running in production WITH an allowlist, restrict /docs and /redoc
+# to only the trusted IPs defined in DOCS_ALLOWED_IPS.
+@app.middleware("http")
+async def guard_docs_in_production(request: Request, call_next):
+    docs_paths = ("/docs", "/redoc", "/openapi.json")
+    if settings.is_production and request.url.path in docs_paths:
+        # Resolve the real client IP (respects X-Forwarded-For from Render/nginx)
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        client_ip = (
+            forwarded_for.split(",")[0].strip()
+            if forwarded_for
+            else (request.client.host if request.client else "")
+        )
+        if client_ip not in settings.allowed_ips_set:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="API documentation is not available in production.",
+            )
+    return await call_next(request)
+
 
 ## Security Headers Middleware
 @app.middleware("http")
